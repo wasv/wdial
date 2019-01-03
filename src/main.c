@@ -5,6 +5,7 @@
 #include "samples.h"
 #include <stdint.h>
 #include <libopencm3/stm32/dma.h>
+#include <libopencm3/stm32/adc.h>
 #include <libopencm3/stm32/timer.h>
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/rcc.h>
@@ -18,6 +19,50 @@ static void gpio_setup(void)
 	/* Set GPIO13 (in GPIOC) to 'output push-pull'. */
 	gpio_set_mode(GPIOC, GPIO_MODE_OUTPUT_2_MHZ,
 		      GPIO_CNF_OUTPUT_PUSHPULL, GPIO13);
+}
+
+uint16_t channel_values[1];
+uint8_t channel_array[] = {0}; // Read from channel 0.
+
+static void adc_setup(void)
+{
+	/* Enable ADC1 clock. */
+	rcc_periph_clock_enable(RCC_ADC1);
+
+    /* Start ADC1 Powered Off */
+    adc_power_off(ADC1);
+
+    /* Set scan mode to support multiple analog inputs */
+    adc_enable_scan_mode(ADC1);
+    /* Set continuous mode */
+    adc_set_continuous_conversion_mode(ADC1);
+    /* Right align ADC reading */
+    adc_set_left_aligned(ADC1);
+    /* DMA request on ADC reading */
+    adc_enable_dma(ADC1);
+
+    /* Set channel sequence */
+    adc_set_regular_sequence(ADC1, sizeof(channel_array), channel_array);
+    
+	/* Enable GPIOA clock. */
+	rcc_periph_clock_enable(RCC_GPIOA);
+
+	/* Configure Output Pin A0 as ADC0 */
+	gpio_set_mode(GPIOA, GPIO_MODE_INPUT,
+                  GPIO_CNF_OUTPUT_ALTFN_OPENDRAIN, GPIO0);
+
+	/* Power on ADC1 */
+    adc_power_on(ADC1);
+
+    /* 0.1s delay for ADC stabilization. */
+    for(int i = 0; i < 800000; i++)
+        __asm__("nop");
+    
+    /* Calibrate ADC */
+    adc_reset_calibration(ADC1);
+    adc_calibrate(ADC1);
+
+    adc_start_conversion_direct(ADC1);
 }
 
 static void tim3_setup(void)
@@ -73,7 +118,7 @@ static void dma_setup(void) {
 	/* Enable DMA 1. */
 	rcc_periph_clock_enable(RCC_DMA1);
 
-	/* Reset DMA 1 Channel 3 */
+	/* Reset DMA 1 Channel 3 (TIM3) */
 	dma_channel_reset(DMA1, DMA_CHANNEL3);
 
 	/* Reading from memory to perihperal */
@@ -89,8 +134,8 @@ static void dma_setup(void) {
 	dma_enable_memory_increment_mode(DMA1, DMA_CHANNEL3);
 	dma_set_memory_size(DMA1, DMA_CHANNEL3, DMA_CCR_MSIZE_8BIT);
 	/* Specify buffer location and length */
-	dma_set_memory_address(DMA1, DMA_CHANNEL3, (uint32_t)(&samples));
-	dma_set_number_of_data(DMA1, DMA_CHANNEL3, NUM_SAMPLES);
+	dma_set_memory_address(DMA1, DMA_CHANNEL3, (uint32_t)(&channel_values)+1);
+	dma_set_number_of_data(DMA1, DMA_CHANNEL3, 1);
 
 	/* Enable circular mode, loops to start when done. */
 	dma_enable_circular_mode(DMA1, DMA_CHANNEL3);
@@ -99,6 +144,34 @@ static void dma_setup(void) {
 	dma_set_priority(DMA1, DMA_CHANNEL3, DMA_CCR_PL_HIGH);
 
 	dma_enable_channel(DMA1, DMA_CHANNEL3);
+
+
+	/* Reset DMA 1 Channel 1 (ADC1) */
+	dma_channel_reset(DMA1, DMA_CHANNEL1);
+
+	/* Reading from memory to perihperal */
+	dma_set_read_from_peripheral(DMA1, DMA_CHANNEL1);
+
+	/* Writing to same 16 bit address each time */
+	dma_disable_peripheral_increment_mode(DMA1, DMA_CHANNEL1);
+	dma_set_peripheral_size(DMA1, DMA_CHANNEL1, DMA_CCR_PSIZE_16BIT);
+	/* Specify peripheral register */
+	dma_set_peripheral_address(DMA1, DMA_CHANNEL1, (uint32_t)(&ADC1_DR));
+
+	/* Reading from next 8 bit address each time */
+	dma_enable_memory_increment_mode(DMA1, DMA_CHANNEL1);
+	dma_set_memory_size(DMA1, DMA_CHANNEL1, DMA_CCR_MSIZE_16BIT);
+	/* Specify buffer location and length */
+	dma_set_memory_address(DMA1, DMA_CHANNEL1, (uint32_t)(&channel_values));
+	dma_set_number_of_data(DMA1, DMA_CHANNEL1, sizeof(channel_values)/sizeof(uint16_t));
+
+	/* Enable circular mode, loops to start when done. */
+	dma_enable_circular_mode(DMA1, DMA_CHANNEL1);
+
+	/* Set DMA Priority to high */
+	dma_set_priority(DMA1, DMA_CHANNEL1, DMA_CCR_PL_HIGH);
+
+	dma_enable_channel(DMA1, DMA_CHANNEL1);
 }
 
 int main(void)
@@ -106,6 +179,7 @@ int main(void)
 	dma_setup();
 	tim3_setup();
 	gpio_setup();
+	adc_setup();
 
 	/* Blink the LED (PC13) on the board. */
 	while (1) {
