@@ -20,7 +20,8 @@ DEFS		+= -I./include
 FP_FLAGS	?= -msoft-float
 ARCH_FLAGS  = -mthumb -mcpu=cortex-m3 $(FP_FLAGS) -mfix-cortex-m3-ldrd
 
-CFLAGS      += -Os -ggdb3 -std=c99 $(DEFS) $(ARCH_FLAGS)
+CFLAGS      += -Os -ggdb3 -std=c99
+CXXFLAGS    += -Os -ggdb3
 CPPFLAGS	+= -MD $(DEFS) $(ARCH_FLAGS)
 
 LDSCRIPT 	 = bluepill.ld
