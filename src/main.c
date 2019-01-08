@@ -5,168 +5,45 @@
  *
  * - William A Stevens V (wasv)
  */
+#include "periph.h"
+#include "usb-midi.h"
+
 #include <stdint.h>
-#include <libopencm3/cm3/nvic.h>
+
 #include <libopencm3/stm32/dma.h>
-#include <libopencm3/stm32/adc.h>
 #include <libopencm3/stm32/timer.h>
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
 
-static void gpio_setup(void)
-{
-	/* Enable GPIOC clock. */
-	rcc_periph_clock_enable(RCC_GPIOC);
-
-	/* Set GPIO13 (in GPIOC) to 'output push-pull'. */
-	gpio_set_mode(GPIOC, GPIO_MODE_OUTPUT_2_MHZ,
-		      GPIO_CNF_OUTPUT_PUSHPULL, GPIO13);
-}
-
-uint16_t channel_values[1];
-uint8_t channel_array[] = {0}; // Read from channel 0.
-
-static void adc_setup(void)
-{
-	/* Enable ADC1 clock. */
-	rcc_periph_clock_enable(RCC_ADC1);
-
-    /* Start ADC1 Powered Off */
-    adc_power_off(ADC1);
-
-    /* Set scan mode to support multiple analog inputs */
-    adc_enable_scan_mode(ADC1);
-    /* Set continuous mode */
-    adc_set_continuous_conversion_mode(ADC1);
-    /* Right align ADC reading */
-    adc_set_left_aligned(ADC1);
-    /* DMA request on ADC reading */
-    adc_enable_dma(ADC1);
-
-    /* Set channel sequence */
-    adc_set_regular_sequence(ADC1, sizeof(channel_array), channel_array);
-    
-	/* Enable GPIOA clock. */
-	rcc_periph_clock_enable(RCC_GPIOA);
-
-	/* Configure Output Pin A0 as ADC0 */
-	gpio_set_mode(GPIOA, GPIO_MODE_INPUT,
-                  GPIO_CNF_OUTPUT_ALTFN_OPENDRAIN, GPIO0);
-
-	/* Power on ADC1 */
-    adc_power_on(ADC1);
-
-    /* 0.1s delay for ADC stabilization. */
-    for(int i = 0; i < 800000; i++)
-        __asm__("nop");
-    
-    /* Calibrate ADC */
-    adc_reset_calibration(ADC1);
-    adc_calibrate(ADC1);
-
-    adc_start_conversion_direct(ADC1);
-}
-
-static void tim3_setup(void)
-{
-	/* Enable Timer 3. */
-	rcc_periph_clock_enable(RCC_TIM3);
-
-	/* Configure Timer 3 w/ No clock divider, edge triggered, upcounting */
-	timer_set_mode(TIM3, TIM_CR1_CKD_CK_INT, TIM_CR1_CMS_EDGE, TIM_CR1_DIR_UP);
-	/* Prescale CLOCK_FREQ to (SAMPL_FREQ*SAMPL_RESN) */
-	timer_set_prescaler(TIM3, 15);
-
-	/* Configure Timer 3 Output 3 Active when counter < compare value */
-	timer_set_oc_mode(TIM3, TIM_OC3, TIM_OCM_PWM1);
-
-	/* Configure Timer 3 Output 3 to be active high */
-	timer_set_oc_polarity_high(TIM3, TIM_OC3);
-
-	/* Set 127 tick period. */
-	timer_set_period(TIM3, 0x7F);
-
-	/* Start at 10% duty cycle. */
-	timer_set_oc_value(TIM3, TIM_OC3, 0);
-
-	/* Enable DMA request on update */
-	timer_update_on_overflow(TIM3);
-	timer_enable_update_event(TIM3);
-
-	/* Enable Timer */
-	timer_enable_counter(TIM3);
-
-	/* Enable GPIOB clock. */
-	rcc_periph_clock_enable(RCC_GPIOB);
-
-	/* Configure Output Pin B0 as TIM3C3 */
-	gpio_set_mode(GPIOB, GPIO_MODE_OUTPUT_10_MHZ,
-		      GPIO_CNF_OUTPUT_ALTFN_PUSHPULL, GPIO0);
-
-	/* Enable Output compare mode */
-	timer_enable_oc_output(TIM3, TIM_OC3);
-}
-
-static void dma_setup(void) {
-    /* Enable DMA 1. */
-    rcc_periph_clock_enable(RCC_DMA1);
-
-
-	/* Reset DMA 1 Channel 1 (ADC1) */
-	dma_channel_reset(DMA1, DMA_CHANNEL1);
-    
-	/* Reading from memory to perihperal */
-	dma_set_read_from_peripheral(DMA1, DMA_CHANNEL1);
-
-	/* Writing to same 16 bit address each time */
-	dma_disable_peripheral_increment_mode(DMA1, DMA_CHANNEL1);
-	dma_set_peripheral_size(DMA1, DMA_CHANNEL1, DMA_CCR_PSIZE_16BIT);
-	/* Specify peripheral register */
-	dma_set_peripheral_address(DMA1, DMA_CHANNEL1, (uint32_t)(&ADC1_DR));
-
-	/* Reading from same 16 bit address each time */
-	dma_enable_memory_increment_mode(DMA1, DMA_CHANNEL1);
-	dma_set_memory_size(DMA1, DMA_CHANNEL1, DMA_CCR_MSIZE_16BIT);
-	/* Specify buffer location and length */
-	dma_set_memory_address(DMA1, DMA_CHANNEL1, (uint32_t)(&channel_values));
-	dma_set_number_of_data(DMA1, DMA_CHANNEL1, sizeof(channel_values)/sizeof(uint16_t));
-
-	/* Enable circular mode, loops to start when done. */
-	dma_enable_circular_mode(DMA1, DMA_CHANNEL1);
-
-	/* Set DMA Priority to high */
-	dma_set_priority(DMA1, DMA_CHANNEL1, DMA_CCR_PL_HIGH);
-
-
-    /* Enable xfer complete ISR */
-    dma_enable_transfer_complete_interrupt(DMA1, DMA_CHANNEL1);
-
-    nvic_set_priority(NVIC_DMA1_CHANNEL1_IRQ, 0);
-    nvic_enable_irq(NVIC_DMA1_CHANNEL1_IRQ);
-
-    /* Enable DMA Channel 1 */
-	dma_enable_channel(DMA1, DMA_CHANNEL1);
-}
-
-void dma1_channel1_isr( void ) {
-    if ((DMA1_ISR &DMA_ISR_TCIF1) != 0) {
-        DMA1_IFCR |= DMA_IFCR_CTCIF1;
-    }
-    timer_set_oc_value(TIM3, TIM_OC3, (channel_values[0] >> 9) & 0xFF);
-}
+const char *usb_strings[] = {
+	"WASV",
+	"MIDI Demo",
+	"DEMO",
+};
 
 int main(void)
 {
+	usbd_device *usbd_dev;
+
+	rcc_clock_setup_in_hse_8mhz_out_72mhz();
+
 	dma_setup();
 	tim3_setup();
 	gpio_setup();
 	adc_setup();
 
-	/* Blink the LED (PC13) on the board. */
+    gpio_set(GPIOC, GPIO13);
+
+    usbd_dev = usbd_init(&st_usbfs_v1_usb_driver, &dev, &config,
+                         usb_strings, 3,
+                         usbd_control_buffer, sizeof(usbd_control_buffer));
+
+	usbd_register_set_config_callback(usbd_dev, usb_midi_set_config);
+
+    gpio_clear(GPIOC, GPIO13);
+
 	while (1) {
-		gpio_toggle(GPIOC, GPIO13);	/* LED on/off */
-		for (int i = 0; i < 800000; i++)	/* Wait a bit. */
-			__asm__("nop");
+		usbd_poll(usbd_dev);
 	}
 
 	return 0;

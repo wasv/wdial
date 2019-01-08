@@ -5,6 +5,8 @@ LD = gcc
 OBJDUMP = objdump
 OBJCOPY = objcopy
 
+OBJS        += build/usb-midi.o
+OBJS        += build/periph.o
 OBJS        += build/main.o
 DEPS         = $(OBJS:%.o=%.d)
 
