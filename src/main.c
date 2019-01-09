@@ -16,21 +16,21 @@
 #include <libopencm3/stm32/gpio.h>
 
 const char *usb_strings[] = {
-	"WASV",
-	"MIDI Demo",
-	"DEMO",
+    "WASV",
+    "MIDI Dial",
+    "DEMO",
 };
 
 int main(void)
 {
-	usbd_device *usbd_dev;
+    usbd_device *usbd_dev;
 
-	rcc_clock_setup_in_hse_8mhz_out_72mhz();
+    rcc_clock_setup_in_hse_8mhz_out_72mhz();
 
-	dma_setup();
-	tim3_setup();
-	gpio_setup();
-	adc_setup();
+    dma_setup();
+    tim3_setup();
+    gpio_setup();
+    adc_setup();
 
     gpio_set(GPIOC, GPIO13);
 
@@ -38,13 +38,13 @@ int main(void)
                          usb_strings, 3,
                          usbd_control_buffer, sizeof(usbd_control_buffer));
 
-	usbd_register_set_config_callback(usbd_dev, usb_midi_set_config);
+    usbd_register_set_config_callback(usbd_dev, usb_midi_set_config);
 
     gpio_clear(GPIOC, GPIO13);
 
-	while (1) {
-		usbd_poll(usbd_dev);
-	}
+    while (1) {
+        usbd_poll(usbd_dev);
+    }
 
-	return 0;
+    return 0;
 }
