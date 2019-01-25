@@ -5,6 +5,7 @@ LD = gcc
 OBJDUMP = objdump
 OBJCOPY = objcopy
 
+OBJS        += build/cbuf.o
 OBJS        += build/usb-midi.o
 OBJS        += build/periph.o
 OBJS        += build/main.o
@@ -22,8 +23,8 @@ DEFS		+= -I./src
 FP_FLAGS	?= -msoft-float
 ARCH_FLAGS  = -mthumb -mcpu=cortex-m3 $(FP_FLAGS) -mfix-cortex-m3-ldrd
 
-CFLAGS      += -Os -ggdb3 -std=c99
-CXXFLAGS    += -Os -ggdb3
+CFLAGS      += -ggdb3 -std=c99
+CXXFLAGS    += -ggdb3
 CPPFLAGS	+= -MD $(DEFS) $(ARCH_FLAGS)
 
 LDSCRIPT 	 = bluepill.ld

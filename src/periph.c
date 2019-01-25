@@ -39,7 +39,7 @@ void adc_setup(void)
     uint8_t channel_array[ADC_NCHAN] = {0};
     /* Set channel sequence */
     adc_set_regular_sequence(ADC1, sizeof(channel_array), channel_array);
-    adc_set_sample_time_on_all_channels(ADC1, ADC_SMPR_SMP_239DOT5CYC);
+    //adc_set_sample_time_on_all_channels(ADC1, ADC_SMPR_SMP_239DOT5CYC);
     
     /* Enable GPIOA clock. */
     rcc_periph_clock_enable(RCC_GPIOA);

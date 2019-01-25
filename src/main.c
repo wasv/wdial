@@ -1,12 +1,12 @@
-/* Sets the brightness an LED using PWM on Timer 3 on an stm32f103
- * 'Blue Pill' dev board.  Brightness given using analog value on PA0
- * read using DMA on ADC1.  Uses PC13 for status LED, PB0 as PWM LED,
- * PA0 as brightness control (such as var. resistor)
+/* Sets a MIDI control value over USB using a knob.  Sets an LEDs
+ * brightness based on note velocity.  Uses PC13 for status LED, PB0
+ * as PWM LED, PA0 as MIDI control (such as var. resistor)
  *
  * - William A Stevens V (wasv)
  */
 #include "periph.h"
 #include "usb-midi.h"
+#include "cbuf.h"
 
 #include <stdint.h>
 
@@ -15,8 +15,10 @@
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
 
+#define NSAMP 4
+
 usbd_device *usbd_dev;
-volatile uint8_t adc0_update = 0;
+volatile uint8_t adc0_update = false;
 
 const char *usb_strings[] = {
     "WASV",
@@ -45,12 +47,22 @@ void dma1_channel1_isr(void)
     if ((DMA1_ISR &DMA_ISR_TCIF1) != 0) {
         DMA1_IFCR |= DMA_IFCR_CTCIF1;
     }
-    adc0_update = channel_values[0] >> 8 & 0x7F;
+    adc0_update = true;
+}
+
+uint8_t calc_avg(uint8_t *data, size_t count)
+{
+    uint8_t avg = 0;
+    for(size_t i = 0; i < count; i++) {
+        avg += data[i] / count;
+    }
+    return avg;
 }
 
 int main(void)
 {
-    uint8_t old_val = 0;
+    uint8_t old_avg = 0;
+    circ_buff *adc0_cbuf = circ_buff_new(sizeof(uint8_t), NSAMP);
     rcc_clock_setup_in_hse_8mhz_out_72mhz();
 
     dma_setup();
@@ -71,11 +83,17 @@ int main(void)
     while (1) {
         usbd_poll(usbd_dev);
 
-        if ( adc0_update != old_val ) {
-            old_val = adc0_update;
+        if ( adc0_update ) {
+            uint8_t new_val = channel_values[0] >> 9 & 0x7F;
 
-            uint8_t buf[4] = { 0x03, 0xB0, 0x03, adc0_update };
-            usbd_ep_write_packet(usbd_dev, 0x81, buf, 4);
+            circ_buff_write(adc0_cbuf, &new_val);
+            uint8_t new_avg = calc_avg(adc0_cbuf->buffer, NSAMP);
+
+            if(new_avg != old_avg) {
+                uint8_t buf[4] = { 0x03, 0xB0, 0x03, new_val };
+                usbd_ep_write_packet(usbd_dev, 0x81, buf, 4);
+            }
+            old_avg = new_avg;
         }
     }
 
