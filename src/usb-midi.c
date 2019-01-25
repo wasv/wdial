@@ -8,18 +8,6 @@
 #include <libopencm3/usb/midi.h>
 #include <libopencm3/usb/audio.h>
 
-void usb_midi_data_rx_cb(usbd_device *usbd_dev, uint8_t ep)
-{
-    (void)ep;
-
-    char buf[8];
-    int len = usbd_ep_read_packet(usbd_dev, 0x01, buf, 8);
-
-    if (len) {
-        usbd_ep_write_packet(usbd_dev, 0x81, buf, len);
-    }
-}
-
 void usb_midi_set_config(usbd_device *usbd_dev, uint16_t wValue)
 {
     (void)wValue;

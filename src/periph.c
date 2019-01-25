@@ -9,13 +9,6 @@
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
 
-void dma1_channel1_isr( void ) {
-    if ((DMA1_ISR &DMA_ISR_TCIF1) != 0) {
-        DMA1_IFCR |= DMA_IFCR_CTCIF1;
-    }
-    timer_set_oc_value(TIM3, TIM_OC3, (channel_values[0] >> 9) & 0xFF);
-}
-
 void gpio_setup(void)
 {
     /* Enable GPIOC clock. */
@@ -46,6 +39,7 @@ void adc_setup(void)
     uint8_t channel_array[ADC_NCHAN] = {0};
     /* Set channel sequence */
     adc_set_regular_sequence(ADC1, sizeof(channel_array), channel_array);
+    adc_set_sample_time_on_all_channels(ADC1, ADC_SMPR_SMP_239DOT5CYC);
     
     /* Enable GPIOA clock. */
     rcc_periph_clock_enable(RCC_GPIOA);
