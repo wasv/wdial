@@ -17,7 +17,7 @@ OPENCM3_DIR     = libopencm3
 
 DEFS		+= -DSTM32F1
 DEFS		+= -I$(OPENCM3_DIR)/include
-DEFS		+= -I./include
+DEFS		+= -I./src
 
 FP_FLAGS	?= -msoft-float
 ARCH_FLAGS  = -mthumb -mcpu=cortex-m3 $(FP_FLAGS) -mfix-cortex-m3-ldrd
